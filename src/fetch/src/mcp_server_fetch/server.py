@@ -3,22 +3,14 @@ from urllib.parse import urlparse, urlunparse
 
 import markdownify
 import readabilipy.simple_json
-from mcp.shared.exceptions import McpError
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import (
-    ErrorData,
-    GetPromptResult,
-    Prompt,
-    PromptArgument,
-    PromptMessage,
-    TextContent,
-    Tool,
-    INVALID_PARAMS,
-    INTERNAL_ERROR,
-)
+from mcp.shared.exceptions import McpError
+from mcp.types import (INTERNAL_ERROR, INVALID_PARAMS, ErrorData,
+                       GetPromptResult, Prompt, PromptArgument, PromptMessage,
+                       TextContent, Tool)
 from protego import Protego
-from pydantic import BaseModel, Field, AnyUrl
+from pydantic import AnyUrl, BaseModel, Field
 
 DEFAULT_USER_AGENT_AUTONOMOUS = "ModelContextProtocol/1.0 (Autonomous; +https://github.com/modelcontextprotocol/servers)"
 DEFAULT_USER_AGENT_MANUAL = "ModelContextProtocol/1.0 (User-Specified; +https://github.com/modelcontextprotocol/servers)"
@@ -121,11 +113,26 @@ async def fetch_url(
             response = await client.get(
                 url,
                 follow_redirects=True,
-                headers={"User-Agent": user_agent},
+                headers={
+                    "User-Agent": user_agent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Encoding": "gzip, deflate",
+                    "DNT": "1",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                },
                 timeout=30,
             )
         except HTTPError as e:
             raise McpError(ErrorData(code=INTERNAL_ERROR, message=f"Failed to fetch {url}: {e!r}"))
+        if response.status_code == 403:
+            raise McpError(ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"Failed to fetch {url} - status code 403 (Forbidden). The website is blocking automated requests. "
+                f"This could be due to bot protection, rate limiting, or security measures. "
+                f"Try accessing the page manually in a browser, or the site may require authentication.",
+            ))
         if response.status_code >= 400:
             raise McpError(ErrorData(
                 code=INTERNAL_ERROR,
